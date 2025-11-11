@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Detection App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🎭 Emotion Detection System</h1>
+        <p class="subtitle">Detect emotions from images or live webcam</p>
+        
+        <div class="input-section">
+            <label for="name">Your Name:</label>
+            <input type="text" id="name" placeholder="Enter your name" required>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('upload')">📤 Upload Image</button>
+            <button class="tab" onclick="showTab('webcam')">📷 Live Webcam</button>
+        </div>
+
+        <!-- Upload Tab -->
+        <div id="upload-tab" class="tab-content active">
+            <div class="upload-area">
+                <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                <button class="upload-btn" onclick="document.getElementById('imageInput').click()">
+                    Choose Image
+                </button>
+                <p class="upload-hint">Select a photo with your face</p>
+                <div id="imagePreview"></div>
+            </div>
+            <button class="detect-btn" onclick="uploadImage()">Detect Emotion</button>
+        </div>
+
+        <!-- Webcam Tab -->
+        <div id="webcam-tab" class="tab-content">
+            <div class="webcam-container">
+                <video id="video" autoplay></video>
+                <canvas id="canvas" style="display:none;"></canvas>
+                <div class="webcam-overlay">
+                    <div class="face-guide"></div>
+                </div>
+            </div>
+            <div class="webcam-controls">
+                <button class="start-btn" onclick="startWebcam()">Start Camera</button>
+                <button class="capture-btn" onclick="captureAndDetect()">📸 Capture & Detect</button>
+            </div>
+            <p class="webcam-hint">Position your face in the circle</p>
+        </div>
+
+        <div id="result" class="result"></div>
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Analyzing emotion...</p>
+        </div>
+    </div>
+
+    <script>
+        let stream = null;
+        let cameraStarted = false;
+
+        // Preview uploaded image
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('imagePreview').innerHTML = 
+                        `<img src="${e.target.result}" alt="Preview">`;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            if (tab === 'upload') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('upload-tab').classList.add('active');
+                stopWebcam();
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('webcam-tab').classList.add('active');
+            }
+        }
+
+        async function uploadImage() {
+            const name = document.getElementById('name').value.trim();
+            const file = document.getElementById('imageInput').files[0];
+            
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            if (!file) {
+                alert('Please select an image');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('image', file);
+
+            showLoading(true);
+            document.getElementById('result').innerHTML = '';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                showLoading(false);
+                
+                if (data.error) {
+                    showResult('error', data.error);
+                } else {
+                    showResult('success', `
+                        <h2>✨ Result for ${data.name}</h2>
+                        <div class="emotion-box">
+                            <div class="emotion-icon">${getEmotionIcon(data.emotion)}</div>
+                            <p class="emotion-label">Detected Emotion</p>
+                            <p class="emotion-value">${data.emotion}</p>
+                            <p class="confidence">Confidence: ${data.confidence}%</p>
+                        </div>
+                    `);
+                }
+            } catch (error) {
+                showLoading(false);
+                showResult('error', 'Connection error: ' + error.message);
+            }
+        }
+
+        async function startWebcam() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                document.getElementById('video').srcObject = stream;
+                cameraStarted = true;
+                document.querySelector('.start-btn').textContent = 'Camera Started ✓';
+                document.querySelector('.start-btn').style.background = '#27ae60';
+            } catch (error) {
+                alert('Could not access webcam: ' + error.message + '\n\nPlease allow camera access in your browser.');
+            }
+        }
+
+        function stopWebcam() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                cameraStarted = false;
+                document.querySelector('.start-btn').textContent = 'Start Camera';
+                document.querySelector('.start-btn').style.background = '';
+            }
+        }
+
+        async function captureAndDetect() {
+            const name = document.getElementById('name').value.trim();
+            
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+
+            if (!cameraStarted) {
+                alert('Please start the camera first');
+                return;
+            }
+
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0);
+
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('image', imageData);
+
+            showLoading(true);
+            document.getElementById('result').innerHTML = '';
+
+            try {
+                const response = await fetch('/webcam', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                showLoading(false);
+                
+                if (data.error) {
+                    showResult('error', data.error);
+                } else {
+                    showResult('success', `
+                        <h2>✨ Result for ${data.name}</h2>
+                        <div class="emotion-box">
+                            <div class="emotion-icon">${getEmotionIcon(data.emotion)}</div>
+                            <p class="emotion-label">Detected Emotion</p>
+                            <p class="emotion-value">${data.emotion}</p>
+                            <p class="confidence">Confidence: ${data.confidence}%</p>
+                        </div>
+                    `);
+                }
+            } catch (error) {
+                showLoading(false);
+                showResult('error', 'Connection error: ' + error.message);
+            }
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function showResult(type, content) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = content;
+            resultDiv.style.display = 'block';
+        }
+
+        function getEmotionIcon(emotion) {
+            const icons = {
+                'Happy': '😊',
+                'Sad': '😢',
+                'Angry': '😠',
+                'Surprise': '😮',
+                'Fear': '😨',
+                'Disgust': '🤢',
+                'Neutral': '😐'
+            };
+            return icons[emotion] || '😐';
+        }
+    </script>
+</body>
+</html>
