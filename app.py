@@ -1,4 +1,4 @@
-# app.py - COMPLETE WORKING VERSION
+# app.py - WINDOWS COMPATIBLE VERSION (NO UNICODE)
 from flask import Flask, render_template, request, jsonify
 import cv2
 import numpy as np
@@ -8,12 +8,18 @@ from datetime import datetime
 import os
 from werkzeug.utils import secure_filename
 import base64
+import sys
+import io
+
+# Fix Windows encoding issues
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
-# Emotion labels - MUST match model output order
+# Emotion labels
 emotion_labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
 
 # Load emotion detection model
@@ -23,18 +29,16 @@ print("="*60)
 
 model = None
 try:
-    # Try .h5 model first (real trained model)
     if os.path.exists('emotion_model.h5'):
         model = load_model('emotion_model.h5', compile=False)
-        print("✅ REAL MODEL loaded from emotion_model.h5")
+        print("SUCCESS: REAL MODEL loaded from emotion_model.h5")
     elif os.path.exists('emotion_model.keras'):
         model = load_model('emotion_model.keras', compile=False)
-        print("⚠️ Using basic model from emotion_model.keras")
+        print("WARNING: Using basic model from emotion_model.keras")
     else:
-        print("❌ ERROR: No model file found!")
-        print("Please ensure 'emotion_model.h5' or 'emotion_model.keras' exists")
+        print("ERROR: No model file found!")
 except Exception as e:
-    print(f"❌ Error loading model: {e}")
+    print(f"ERROR: Could not load model - {e}")
     model = None
 
 # Load face cascade
@@ -46,17 +50,17 @@ try:
     face_cascade = cv2.CascadeClassifier(cascade_path)
     
     if face_cascade.empty():
-        print(f"⚠️ Failed to load from: {cascade_path}")
+        print(f"WARNING: Failed to load from {cascade_path}")
         cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
         face_cascade = cv2.CascadeClassifier(cascade_path)
     
     if not face_cascade.empty():
-        print(f"✅ Face cascade loaded successfully")
+        print("SUCCESS: Face cascade loaded")
     else:
-        print("❌ ERROR: Could not load face cascade!")
+        print("ERROR: Could not load face cascade!")
         
 except Exception as e:
-    print(f"❌ Error loading face cascade: {e}")
+    print(f"ERROR: Face cascade loading failed - {e}")
 
 print("="*60 + "\n")
 
@@ -74,38 +78,38 @@ def init_db():
                       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
         conn.commit()
         conn.close()
-        print("✅ Database initialized successfully\n")
+        print("SUCCESS: Database initialized\n")
     except Exception as e:
-        print(f"❌ Database error: {e}\n")
+        print(f"ERROR: Database initialization failed - {e}\n")
 
 init_db()
 
 def detect_emotion(image_path):
-    """Detect emotion from image with aggressive face detection"""
+    """Detect emotion from image"""
     print(f"\n{'='*60}")
     print(f"DETECTING EMOTION FROM: {image_path}")
     print(f"{'='*60}")
     
     if model is None:
-        print("❌ ERROR: Model not loaded!")
+        print("ERROR: Model not loaded!")
         return None, 0
     
     if face_cascade is None or face_cascade.empty():
-        print("❌ ERROR: Face cascade not loaded!")
+        print("ERROR: Face cascade not loaded!")
         return None, 0
     
     # Read image
     img = cv2.imread(image_path)
     if img is None:
-        print(f"❌ ERROR: Could not read image")
+        print("ERROR: Could not read image")
         return None, 0
     
-    print(f"✅ Image loaded: {img.shape}")
+    print(f"SUCCESS: Image loaded - Shape: {img.shape}")
     
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray_equalized = cv2.equalizeHist(gray)
-    print(f"✅ Preprocessed image")
+    print("SUCCESS: Image preprocessed")
     
     # Try multiple detection attempts
     detection_attempts = [
@@ -127,7 +131,7 @@ def detect_emotion(image_path):
         )
         
         if len(faces) > 0:
-            print(f"✅ Found {len(faces)} face(s)!")
+            print(f"SUCCESS: Found {len(faces)} face(s)!")
             break
         
         faces = face_cascade.detectMultiScale(
@@ -136,22 +140,22 @@ def detect_emotion(image_path):
         )
         
         if len(faces) > 0:
-            print(f"✅ Found {len(faces)} face(s)!")
+            print(f"SUCCESS: Found {len(faces)} face(s)!")
             break
         
-        print("❌")
+        print("No faces")
     
     if len(faces) == 0:
         print(f"\n{'='*60}")
-        print("❌ No faces detected")
+        print("FINAL RESULT: No faces detected")
         print(f"{'='*60}\n")
         return None, 0
     
-    print(f"\n✅ FACE DETECTION SUCCESSFUL!")
+    print(f"\nSUCCESS: Face detection complete!")
     
     # Get largest face
     (x, y, w, h) = max(faces, key=lambda f: f[2] * f[3])
-    print(f"Using face: position=({x},{y}), size={w}x{h}")
+    print(f"Using face at position ({x},{y}), size {w}x{h}")
     
     # Extract and process face
     face_roi = gray_equalized[y:y+h, x:x+w]
@@ -159,10 +163,10 @@ def detect_emotion(image_path):
     face_normalized = face_resized.astype('float32') / 255.0
     face_input = np.reshape(face_normalized, (1, 64, 64, 1))
     
-    print(f"✅ Preprocessed face: {face_input.shape}")
+    print(f"Face preprocessed for model: {face_input.shape}")
     
     # Predict emotion
-    print(f"\n🔮 Predicting emotion...")
+    print("\nPredicting emotion...")
     predictions = model.predict(face_input, verbose=0)
     
     emotion_idx = np.argmax(predictions[0])
@@ -170,14 +174,13 @@ def detect_emotion(image_path):
     detected_emotion = emotion_labels[emotion_idx]
     
     # Show probabilities
-    print(f"\n📊 Predictions:")
+    print("\nPrediction probabilities:")
     for i, label in enumerate(emotion_labels):
         prob = predictions[0][i] * 100
-        bar = "█" * int(prob / 5)
-        print(f"   {label:10s}: {prob:5.2f}% {bar}")
+        print(f"   {label:10s}: {prob:5.2f}%")
     
     print(f"\n{'='*60}")
-    print(f"🎭 RESULT: {detected_emotion} ({confidence:.2f}%)")
+    print(f"FINAL RESULT: {detected_emotion} (Confidence: {confidence:.2f}%)")
     print(f"{'='*60}\n")
     
     return detected_emotion, confidence
@@ -204,16 +207,13 @@ def upload_image():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        print(f"\n✅ Saved: {filepath}")
+        print(f"\nImage saved to: {filepath}")
         
         emotion, confidence = detect_emotion(filepath)
         
         if emotion is None:
             return jsonify({
-                'error': 'No face detected. Please ensure:\n' +
-                        '• Your face is clearly visible\n' +
-                        '• Good lighting\n' +
-                        '• Face directly facing camera'
+                'error': 'No face detected. Please ensure your face is clearly visible with good lighting.'
             }), 400
         
         conn = sqlite3.connect('emotions.db')
@@ -230,7 +230,7 @@ def upload_image():
         })
     
     except Exception as e:
-        print(f"\n❌ ERROR: {e}")
+        print(f"\nERROR in upload: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -255,16 +255,13 @@ def webcam_capture():
         with open(filepath, 'wb') as f:
             f.write(image_bytes)
         
-        print(f"\n✅ Webcam saved: {filepath}")
+        print(f"\nWebcam image saved to: {filepath}")
         
         emotion, confidence = detect_emotion(filepath)
         
         if emotion is None:
             return jsonify({
-                'error': 'No face detected. Please:\n' +
-                        '• Position face in circle\n' +
-                        '• Ensure good lighting\n' +
-                        '• Face the camera directly'
+                'error': 'No face detected. Please position your face clearly in the circle.'
             }), 400
         
         conn = sqlite3.connect('emotions.db')
@@ -281,7 +278,7 @@ def webcam_capture():
         })
     
     except Exception as e:
-        print(f"\n❌ ERROR: {e}")
+        print(f"\nERROR in webcam: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -307,11 +304,10 @@ def history():
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     print("\n" + "="*60)
-    print("🎭 EMOTION DETECTION WEB APP")
+    print("EMOTION DETECTION WEB APP")
     print("="*60)
-    print("\n✅ Starting server...")
-    print("📍 Open: http://127.0.0.1:5000")
-    print("\n⚠️  Press CTRL+C to stop")
+    print("\nStarting server...")
+    print("Open your browser: http://127.0.0.1:5000")
+    print("\nPress CTRL+C to stop")
     print("="*60 + "\n")
     app.run(debug=True, host='0.0.0.0', port=5000)
-    
