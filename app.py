@@ -228,6 +228,7 @@ def upload_image():
                 'error': 'No face detected. Please ensure your face is clearly visible with good lighting.'
             }), 400
         
+
         conn = sqlite3.connect('emotions.db')
         c = conn.cursor()
         c.execute("INSERT INTO detections (name, image_path, emotion, confidence) VALUES (?, ?, ?, ?)",
@@ -334,3 +335,20 @@ if __name__ == '__main__':
     if __name__ == '__main__':
         port = int(os.environ.get('PORT', 5000))
         app.run(debug=False, host='0.0.0.0', port=port)
+        os.environ.get('PORT', 5000)
+        if __name__ == '__main__':
+
+              os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    print("\n" + "="*60)
+    print("EMOTION DETECTION WEB APP")
+    print("="*60)
+    print("\nStarting server...")
+    
+    # Get port from environment variable (Render requirement)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"Running on port: {port}")
+    print("="*60 + "\n")
+    
+    # Run app (debug=False for production)
+    app.run(debug=False, host='0.0.0.0', port=port)
