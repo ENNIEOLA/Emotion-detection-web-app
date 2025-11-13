@@ -11,6 +11,18 @@ import base64
 import sys
 import io
 
+# Download model if not exists (for Render)
+import urllib.request
+
+if not os.path.exists('emotion_model.h5'):
+    print("Downloading emotion model for first deployment...")
+    try:
+        url = "https://github.com/oarriaga/face_classification/raw/master/trained_models/emotion_models/fer2013_mini_XCEPTION.102-0.66.hdf5"
+        urllib.request.urlretrieve(url, "emotion_model.h5")
+        print("Model downloaded successfully!")
+    except Exception as e:
+        print(f"Warning: Could not download model - {e}")
+
 # Fix Windows encoding issues
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -283,6 +295,7 @@ def webcam_capture():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/history')
 def history():
     try:
@@ -310,4 +323,14 @@ if __name__ == '__main__':
     print("Open your browser: http://127.0.0.1:5000")
     print("\nPress CTRL+C to stop")
     print("="*60 + "\n")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+
+    # Get port from environment variable (Render requirement)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"Running on port: {port}")
+    print("="*60 + "\n")
+    
+    # Run app (debug=False for production)
+    app.run(debug=False, host='0.0.0.0', port=port)
+    if __name__ == '__main__':
+        port = int(os.environ.get('PORT', 5000))
+        app.run(debug=False, host='0.0.0.0', port=port)
